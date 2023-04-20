@@ -107,13 +107,20 @@ func (c *rateLimitedConn) Read(b []byte) (n int, err error) {
 	defer func() {
 		elapsed := time.Since(start)
 		log.Printf("read %d bytes in %s, rate was %.2f B/s", n, elapsed, float64(n)/elapsed.Seconds())
+		if err != nil {
+			log.Printf("err: %v", err)
+		}
 		log.Println()
 	}()
+	log.Printf("will read up to %d bytes", len(b))
 	for _, chunk := range c.split(b, int(c.readLimiter.Limit())) {
 		bytesRead, err := c.readWithRateLimit(ctx, chunk)
 		n += bytesRead
 		if err != nil {
 			return n, err
+		}
+		if bytesRead < len(b) {
+			return n, nil // we read all there is
 		}
 	}
 	return n, nil
@@ -121,7 +128,10 @@ func (c *rateLimitedConn) Read(b []byte) (n int, err error) {
 
 func (c *rateLimitedConn) readWithRateLimit(ctx context.Context, b []byte) (int, error) {
 	log.Printf("waiting to read %d bytes", len(b))
-	err := c.readLimiter.WaitN(ctx, len(b))
+	// we don't know how many bytes will actually be read so we optimistically
+	// wait until we can read at least 1 byte, at the end we additionally
+	// reserve the number of actually read bytes
+	err := c.readLimiter.WaitN(ctx, 1)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			// according to net.Conn the error should be os.ErrDeadlineExceeded
@@ -130,7 +140,13 @@ func (c *rateLimitedConn) readWithRateLimit(ctx context.Context, b []byte) (int,
 		return 0, err
 	}
 	log.Printf("reading...")
-	return c.Conn.Read(b)
+
+	n, err := c.Conn.Read(b)
+	if n > 0 {
+		// reserve the number of actually read bytes to delay future reads
+		_ = c.readLimiter.ReserveN(time.Now(), n-1)
+	}
+	return n, err
 }
 
 func (c *rateLimitedConn) split(b []byte, maxSize int) [][]byte {
