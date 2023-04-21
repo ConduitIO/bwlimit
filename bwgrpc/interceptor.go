@@ -1,3 +1,17 @@
+// Copyright © 2023 Meroxa, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package bwgrpc
 
 import (
@@ -11,23 +25,31 @@ import (
 	"google.golang.org/grpc"
 )
 
-func WithBandwidthLimitedContextDialer(writeBytesPerSecond, readBytesPerSecond bwlimit.Byte, dialer func(ctx context.Context, s string) (net.Conn, error)) grpc.DialOption {
-	return grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
-		var conn net.Conn
-		var err error
-		if dialer != nil {
-			conn, err = dialer(ctx, s)
-		} else {
-			// default dialer copied from google.golang.org/grpc
-			networkType, address := parseDialTarget(s)
-			conn, err = (&net.Dialer{}).DialContext(ctx, networkType, address)
-		}
+func WithBandwidthLimitedContextDialer(
+	writeBytesPerSecond,
+	readBytesPerSecond bwlimit.Byte,
+	dialer func(context.Context, string) (net.Conn, error),
+) grpc.DialOption {
+	return grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
+		conn, err := dial(ctx, addr, dialer)
 		if err != nil {
 			return nil, err
 		}
 
 		return bwlimit.NewConn(conn, writeBytesPerSecond, readBytesPerSecond), nil
 	})
+}
+
+// dial uses the dialer to get a connection if supplied, and falls back to the
+// default implementation used by google.golang.org/grpc.
+func dial(ctx context.Context, addr string, dialer func(context.Context, string) (net.Conn, error)) (net.Conn, error) {
+	if dialer != nil {
+		return dialer(ctx, addr)
+	}
+
+	// default dialer copied from google.golang.org/grpc
+	networkType, address := parseDialTarget(addr)
+	return (&net.Dialer{}).DialContext(ctx, networkType, address)
 }
 
 // parseDialTarget returns the network and address to pass to dialer.
