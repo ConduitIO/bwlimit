@@ -13,7 +13,7 @@ jobs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout Sources
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - id: set-matrix
         run: ./.github/workflows/resolve-modules.sh
   golangci-lint:
