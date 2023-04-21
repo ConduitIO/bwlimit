@@ -2,7 +2,7 @@ version: v1
 managed:
   enabled: true
   go_package_prefix:
-    default: "github.com/conduitio/conn-rate-limit/proto"
+    default: "github.com/conduitio/bwlimit/bwgrpc/testproto"
 plugins:
   - plugin: buf.build/protocolbuffers/go:v1.29.1
     out: .

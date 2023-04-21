@@ -1,4 +1,4 @@
-package ratelimit
+package bwgrpc
 
 import (
 	"context"
@@ -6,10 +6,12 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/conduitio/bwlimit"
+
 	"google.golang.org/grpc"
 )
 
-func WithRateLimitedContextDialer(writeBytesPerSecond int, readBytesPerSecond int, dialer func(ctx context.Context, s string) (net.Conn, error)) grpc.DialOption {
+func WithBandwidthLimitedContextDialer(writeBytesPerSecond, readBytesPerSecond bwlimit.Byte, dialer func(ctx context.Context, s string) (net.Conn, error)) grpc.DialOption {
 	return grpc.WithContextDialer(func(ctx context.Context, s string) (net.Conn, error) {
 		var conn net.Conn
 		var err error
@@ -24,11 +26,12 @@ func WithRateLimitedContextDialer(writeBytesPerSecond int, readBytesPerSecond in
 			return nil, err
 		}
 
-		return NewRateLimitedConn(conn, writeBytesPerSecond, readBytesPerSecond), nil
+		return bwlimit.NewConn(conn, writeBytesPerSecond, readBytesPerSecond), nil
 	})
 }
 
-// parseDialTarget returns the network and address to pass to dialer. Copied from google.golang.org/grpc.
+// parseDialTarget returns the network and address to pass to dialer.
+// Copied from google.golang.org/grpc.
 func parseDialTarget(target string) (string, string) {
 	net := "tcp"
 	m1 := strings.Index(target, ":")

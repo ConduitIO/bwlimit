@@ -1,9 +1,8 @@
-package ratelimit
+package bwlimit
 
 import (
 	"context"
 	"errors"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -11,20 +10,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func NewRateLimitedConn(conn net.Conn, writeBytesPerSecond int, readBytesPerSecond int) net.Conn {
-	rconn := &rateLimitedConn{Conn: conn}
-	if writeBytesPerSecond > 0 {
-		rconn.writeLimiter = rate.NewLimiter(rate.Limit(writeBytesPerSecond), writeBytesPerSecond)
-	}
-	if readBytesPerSecond > 0 {
-		rconn.readLimiter = rate.NewLimiter(rate.Limit(readBytesPerSecond), readBytesPerSecond)
-	}
-	return rconn
+func NewConn(conn net.Conn, writeLimitPerSecond, readLimitPerSecond Byte) *Conn {
+	bwconn := &Conn{Conn: conn}
+	bwconn.SetWriteBandwidthLimit(writeLimitPerSecond)
+	bwconn.SetReadBandwidthLimit(readLimitPerSecond)
+	return bwconn
 }
 
-// rateLimitedConn is a net.Conn connection that limits the bandwith of writes
-// and reads.
-type rateLimitedConn struct {
+// Conn is a net.Conn connection that limits the bandwidth of writes and reads.
+type Conn struct {
 	net.Conn
 	writeLimiter *rate.Limiter
 	readLimiter  *rate.Limiter
@@ -36,10 +30,10 @@ type rateLimitedConn struct {
 // Write writes data to the connection.
 // Write can be made to time out and return an error after a fixed
 // time limit; see SetDeadline and SetWriteDeadline.
-// Write will rate limit the connection bandwidth if a writeLimiter is
-// configured. If the size of b is bigger than the rate per second, writes will
-// be chunked into smaller units.
-func (c *rateLimitedConn) Write(b []byte) (n int, err error) {
+// Write will rate limit the connection bandwidth if a limit is configured. If
+// the size of b is bigger than the rate of bytes per second, writes will be
+// chunked into smaller units.
+func (c *Conn) Write(b []byte) (n int, err error) {
 	if c.writeLimiter == nil {
 		// no limit, just pass the call through to the connection
 		return c.Conn.Write(b)
@@ -47,18 +41,11 @@ func (c *rateLimitedConn) Write(b []byte) (n int, err error) {
 
 	ctx := context.Background()
 	if !c.writeDeadline.IsZero() {
-		log.Printf("setting deadline: %v", c.writeDeadline)
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, c.writeDeadline)
 		defer cancel()
 	}
 
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("written %d bytes in %s, rate was %.2f B/s", n, elapsed, float64(n)/elapsed.Seconds())
-		log.Println()
-	}()
 	for _, chunk := range c.split(b, int(c.writeLimiter.Limit())) {
 		bytesWritten, err := c.writeWithRateLimit(ctx, chunk)
 		n += bytesWritten
@@ -69,8 +56,7 @@ func (c *rateLimitedConn) Write(b []byte) (n int, err error) {
 	return n, nil
 }
 
-func (c *rateLimitedConn) writeWithRateLimit(ctx context.Context, b []byte) (int, error) {
-	log.Printf("waiting to write %d bytes", len(b))
+func (c *Conn) writeWithRateLimit(ctx context.Context, b []byte) (int, error) {
 	err := c.writeLimiter.WaitN(ctx, len(b))
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -79,17 +65,16 @@ func (c *rateLimitedConn) writeWithRateLimit(ctx context.Context, b []byte) (int
 		}
 		return 0, err
 	}
-	log.Printf("writing %q...", b)
 	return c.Conn.Write(b)
 }
 
 // Read reads data from the connection.
 // Read can be made to time out and return an error after a fixed
 // time limit; see SetDeadline and SetReadDeadline.
-// Read will rate limit the connection bandwidth if a readLimiter is
-// configured. If the size of b is bigger than the rate per second, reads will
-// be chunked into smaller units.
-func (c *rateLimitedConn) Read(b []byte) (n int, err error) {
+// Read will rate limit the connection bandwidth if a limit is configured. If
+// the size of b is bigger than the rate of bytes per second, reads will be
+// chunked into smaller units.
+func (c *Conn) Read(b []byte) (n int, err error) {
 	if c.readLimiter == nil {
 		// no limit, just pass the call through to the connection
 		return c.Conn.Read(b)
@@ -97,22 +82,11 @@ func (c *rateLimitedConn) Read(b []byte) (n int, err error) {
 
 	ctx := context.Background()
 	if !c.readDeadline.IsZero() {
-		log.Printf("setting deadline: %v", c.readDeadline)
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithDeadline(ctx, c.readDeadline)
 		defer cancel()
 	}
 
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.Printf("read %d bytes in %s, rate was %.2f B/s", n, elapsed, float64(n)/elapsed.Seconds())
-		if err != nil {
-			log.Printf("err: %v", err)
-		}
-		log.Println()
-	}()
-	log.Printf("will read up to %d bytes", len(b))
 	for _, chunk := range c.split(b, int(c.readLimiter.Limit())) {
 		bytesRead, err := c.readWithRateLimit(ctx, chunk)
 		n += bytesRead
@@ -126,8 +100,7 @@ func (c *rateLimitedConn) Read(b []byte) (n int, err error) {
 	return n, nil
 }
 
-func (c *rateLimitedConn) readWithRateLimit(ctx context.Context, b []byte) (int, error) {
-	log.Printf("waiting to read %d bytes", len(b))
+func (c *Conn) readWithRateLimit(ctx context.Context, b []byte) (int, error) {
 	// we don't know how many bytes will actually be read so we optimistically
 	// wait until we can read at least 1 byte, at the end we additionally
 	// reserve the number of actually read bytes
@@ -139,7 +112,6 @@ func (c *rateLimitedConn) readWithRateLimit(ctx context.Context, b []byte) (int,
 		}
 		return 0, err
 	}
-	log.Printf("reading...")
 
 	n, err := c.Conn.Read(b)
 	if n > 0 {
@@ -149,7 +121,7 @@ func (c *rateLimitedConn) readWithRateLimit(ctx context.Context, b []byte) (int,
 	return n, err
 }
 
-func (c *rateLimitedConn) split(b []byte, maxSize int) [][]byte {
+func (c *Conn) split(b []byte, maxSize int) [][]byte {
 	var end int
 	out := make([][]byte, ((len(b)-1)/maxSize)+1)
 	for i := range out {
@@ -163,7 +135,7 @@ func (c *rateLimitedConn) split(b []byte, maxSize int) [][]byte {
 	return out
 }
 
-func (c *rateLimitedConn) SetDeadline(t time.Time) error {
+func (c *Conn) SetDeadline(t time.Time) error {
 	err := c.Conn.SetDeadline(t)
 	if err == nil {
 		c.writeDeadline = t
@@ -172,7 +144,7 @@ func (c *rateLimitedConn) SetDeadline(t time.Time) error {
 	return err
 }
 
-func (c *rateLimitedConn) SetWriteDeadline(t time.Time) error {
+func (c *Conn) SetWriteDeadline(t time.Time) error {
 	err := c.Conn.SetWriteDeadline(t)
 	if err == nil {
 		c.writeDeadline = t
@@ -180,10 +152,50 @@ func (c *rateLimitedConn) SetWriteDeadline(t time.Time) error {
 	return err
 }
 
-func (c *rateLimitedConn) SetReadDeadline(t time.Time) error {
+func (c *Conn) SetReadDeadline(t time.Time) error {
 	err := c.Conn.SetReadDeadline(t)
 	if err == nil {
 		c.readDeadline = t
 	}
 	return err
+}
+
+func (c *Conn) SetWriteBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		c.writeLimiter = nil
+		return
+	}
+	c.writeLimiter = rate.NewLimiter(rate.Limit(bytesPerSecond), int(bytesPerSecond))
+}
+
+func (c *Conn) SetReadBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		c.readLimiter = nil
+		return
+	}
+	c.readLimiter = rate.NewLimiter(rate.Limit(bytesPerSecond), int(bytesPerSecond))
+}
+
+func (c *Conn) SetBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		c.writeLimiter = nil
+		c.readLimiter = nil
+		return
+	}
+	c.writeLimiter = rate.NewLimiter(rate.Limit(bytesPerSecond), int(bytesPerSecond))
+	c.readLimiter = rate.NewLimiter(rate.Limit(bytesPerSecond), int(bytesPerSecond))
+}
+
+func (c *Conn) WriteBandwidthLimit() Byte {
+	if c.writeLimiter == nil {
+		return 0
+	}
+	return Byte(c.writeLimiter.Limit())
+}
+
+func (c *Conn) ReadBandwidthLimit() Byte {
+	if c.readLimiter == nil {
+		return 0
+	}
+	return Byte(c.readLimiter.Limit())
 }

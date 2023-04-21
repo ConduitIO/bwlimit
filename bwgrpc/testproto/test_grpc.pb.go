@@ -4,7 +4,7 @@
 // - protoc             (unknown)
 // source: test.proto
 
-package proto
+package testproto
 
 import (
 	context "context"

@@ -1,4 +1,4 @@
-package ratelimit
+package bwgrpc
 
 import (
 	"context"
@@ -8,14 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/conduitio/conn-rate-limit/proto"
+	"github.com/conduitio/bwlimit"
+	"github.com/conduitio/bwlimit/bwgrpc/testproto"
 	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestWithRateLimitedContextDialer(t *testing.T) {
+func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
@@ -28,18 +29,19 @@ func TestWithRateLimitedContextDialer(t *testing.T) {
 	}
 
 	// create and register simple mock server
-	mockServer := proto.NewMockTestServiceServer(ctrl)
-	mockServer.EXPECT().TestRPC(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *proto.TestRequest) (*proto.TestResponse, error) {
-		return &proto.TestResponse{Code: 1}, nil
+	mockServer := testproto.NewMockTestServiceServer(ctrl)
+	mockServer.EXPECT().TestRPC(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *testproto.TestRequest) (*testproto.TestResponse, error) {
+		return &testproto.TestResponse{Code: 1}, nil
 	})
-	proto.RegisterTestServiceServer(srv, mockServer)
+	testproto.RegisterTestServiceServer(srv, mockServer)
 
 	// start gRPC server
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := srv.Serve(lis); err != nil {
+		ll := bwlimit.NewListener(lis, 0, 10)
+		if err := srv.Serve(ll); err != nil {
 			log.Fatalf("Server exited with error: %v", err)
 		}
 	}()
@@ -53,7 +55,7 @@ func TestWithRateLimitedContextDialer(t *testing.T) {
 		"bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// this interceptor limits the bandwith
-		WithRateLimitedContextDialer(10, 0, dialer),
+		WithBandwidthLimitedContextDialer(0, 0, dialer),
 	)
 	if err != nil {
 		t.Fatalf("Failed to dial bufnet: %v", err)
@@ -61,9 +63,9 @@ func TestWithRateLimitedContextDialer(t *testing.T) {
 	defer conn.Close()
 
 	// create gRPC service client and measure how long it takes to get a response
-	c := proto.NewTestServiceClient(conn)
+	c := testproto.NewTestServiceClient(conn)
 	before := time.Now()
-	resp, err := c.TestRPC(ctx, &proto.TestRequest{Id: "abcdefghijklmnopqrstuvwxyz"})
+	resp, err := c.TestRPC(ctx, &testproto.TestRequest{Id: "abcdefghijklmnopqrstuvwxyz"})
 	elapsed := time.Since(before)
 	if err != nil {
 		t.Fatalf("Failed to call TestRPC: %v", err)
