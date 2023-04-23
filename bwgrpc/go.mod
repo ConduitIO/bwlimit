@@ -2,9 +2,6 @@ module github.com/conduitio/bwlimit/bwgrpc
 
 go 1.20
 
-// TODO remove replacement
-replace github.com/conduitio/bwlimit => ../.
-
 require (
 	github.com/conduitio/bwlimit v0.0.0-00010101000000-000000000000
 	github.com/golang/mock v1.6.0

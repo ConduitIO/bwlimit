@@ -68,7 +68,7 @@ func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 	conn, err := grpc.DialContext(ctx,
 		"bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		// this interceptor limits the bandwith
+		// this interceptor limits the bandwidth
 		WithBandwidthLimitedContextDialer(0, 0, dialer),
 	)
 	if err != nil {

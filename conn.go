@@ -88,6 +88,9 @@ func (c *Conn) writeWithRateLimit(ctx context.Context, b []byte) (int, error) {
 // Read will rate limit the connection bandwidth if a limit is configured. If
 // the size of b is bigger than the rate of bytes per second, reads will be
 // chunked into smaller units.
+// Note that since it's not known in advance how many bytes will be read, the
+// bandwidth can burst up to 2x of the configured limit when reading the first 2
+// chunks.
 func (c *Conn) Read(b []byte) (n int, err error) {
 	if c.readLimiter == nil {
 		// no limit, just pass the call through to the connection
@@ -115,9 +118,9 @@ func (c *Conn) Read(b []byte) (n int, err error) {
 }
 
 func (c *Conn) readWithRateLimit(ctx context.Context, b []byte) (int, error) {
-	// we don't know how many bytes will actually be read so we optimistically
+	// we don't know how many bytes will actually be read, so we optimistically
 	// wait until we can read at least 1 byte, at the end we additionally
-	// reserve the number of actually read bytes
+	// reserve the number of actually read bytes so future reads are delayed
 	err := c.readLimiter.WaitN(ctx, 1)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -128,7 +131,7 @@ func (c *Conn) readWithRateLimit(ctx context.Context, b []byte) (int, error) {
 	}
 
 	n, err := c.Conn.Read(b)
-	if n > 0 {
+	if n > 1 {
 		// reserve the number of actually read bytes to delay future reads
 		_ = c.readLimiter.ReserveN(time.Now(), n-1)
 	}

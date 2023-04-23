@@ -25,6 +25,8 @@ import (
 	"google.golang.org/grpc"
 )
 
+// WithBandwidthLimitedContextDialer TODO
+// This option can NOT be used together with grpc.WithContextDialer.
 func WithBandwidthLimitedContextDialer(
 	writeBytesPerSecond,
 	readBytesPerSecond bwlimit.Byte,
