@@ -3,7 +3,7 @@ module github.com/conduitio/bwlimit/bwgrpc
 go 1.20
 
 require (
-	github.com/conduitio/bwlimit v0.0.0-00010101000000-000000000000
+	github.com/conduitio/bwlimit v0.0.0-20230423173406-3f566e994bf5
 	github.com/golang/mock v1.6.0
 	google.golang.org/grpc v1.54.0
 	google.golang.org/protobuf v1.30.0
