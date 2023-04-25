@@ -32,10 +32,10 @@ func NewListener(lis net.Listener, writeLimitPerSecond, readLimitPerSecond Byte)
 
 func (l *Listener) Accept() (net.Conn, error) {
 	conn, err := l.Listener.Accept()
-	if err != nil {
-		return nil, err
+	if conn != nil {
+		conn = NewConn(conn, l.writeBytesPerSecond, l.readBytesPerSecond)
 	}
-	return NewConn(conn, l.writeBytesPerSecond, l.readBytesPerSecond), nil
+	return conn, err
 }
 
 func (l *Listener) WriteBandwidthLimit() Byte {

@@ -15,41 +15,58 @@
 package bwlimit
 
 import (
-	"context"
-	"net"
 	"net/http"
+
+	"golang.org/x/time/rate"
 )
 
-func TransportWithBandwidthLimit(transport *http.Transport, writeLimitPerSecond, readLimitPerSecond Byte) {
-	setDialContext(transport, writeLimitPerSecond, readLimitPerSecond)
-	setDialTLSContext(transport, writeLimitPerSecond, readLimitPerSecond)
+type RoundTripper struct {
+	http.RoundTripper
+
+	writeLimiter *rate.Limiter
+	readLimiter  *rate.Limiter
 }
 
-func setDialContext(transport *http.Transport, writeLimitPerSecond, readLimitPerSecond Byte) {
-	dial := transport.DialContext
-	if dial == nil {
-		dial = (&net.Dialer{}).DialContext
+func NewRoundTripper(rt http.RoundTripper, writeLimitPerSecond, readLimitPerSecond Byte) http.RoundTripper {
+	bwrt := &RoundTripper{
+		RoundTripper: rt,
+		writeLimiter: &rate.Limiter{},
+		readLimiter:  &rate.Limiter{},
 	}
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		conn, err := dial(ctx, network, addr)
-		if err != nil {
-			return nil, err
-		}
-		return NewConn(conn, writeLimitPerSecond, readLimitPerSecond), nil
-	}
+	bwrt.SetWriteBandwidthLimit(writeLimitPerSecond)
+	bwrt.SetReadBandwidthLimit(readLimitPerSecond)
+	return bwrt
 }
 
-func setDialTLSContext(transport *http.Transport, writeLimitPerSecond, readLimitPerSecond Byte) {
-	if transport.DialTLSContext == nil {
-		return // nothing to overwrite, the transport will use DialContext
+func (rt *RoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	r.Body = &Reader{
+		Reader:  r.Body,
+		limiter: rt.writeLimiter, // share limiter across all requests
 	}
-	dial := transport.DialTLSContext
-	transport.DialTLSContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		conn, err := dial(ctx, network, addr)
-		if err != nil {
-			return nil, err
+	resp, err := rt.RoundTripper.RoundTrip(r)
+	if resp != nil {
+		resp.Body = &Reader{
+			Reader:  resp.Body,
+			limiter: rt.readLimiter, // share limiter across all responses
 		}
-		return NewConn(conn, writeLimitPerSecond, readLimitPerSecond), nil
 	}
+	return resp, err
+}
 
+func (rt *RoundTripper) SetWriteBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		rt.writeLimiter.SetLimit(rate.Inf)
+		return
+	}
+	rt.writeLimiter.SetLimit(rate.Limit(bytesPerSecond))
+	rt.writeLimiter.SetBurst(int(bytesPerSecond))
+}
+
+func (rt *RoundTripper) SetReadBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		rt.readLimiter.SetLimit(rate.Inf)
+		return
+	}
+	rt.readLimiter.SetLimit(rate.Limit(bytesPerSecond))
+	rt.readLimiter.SetBurst(int(bytesPerSecond))
 }

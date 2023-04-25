@@ -33,22 +33,15 @@ const (
 )
 
 func main() {
-	// change default transport to use bandwidth limit
-	t := (http.DefaultTransport).(*http.Transport)
-	bwlimit.TransportWithBandwidthLimit(t, writeLimit, readLimit)
+	// change default client to use transport with a bandwidth limit
+	http.DefaultClient.Transport = bwlimit.NewRoundTripper(
+		http.DefaultTransport,
+		writeLimit,
+		readLimit,
+	)
 
-	pr, pw := io.Pipe()
-	go func() {
-		random := io.LimitReader(rand.Reader, int64(requestSize))
-		_, err := io.Copy(pw, random)
-		if err != nil {
-			pw.CloseWithError(err)
-		} else {
-			pw.Close()
-		}
-	}()
-
-	resp, err := send(pr)
+	body := randomBody(int64(requestSize))
+	resp, err := send(body)
 	if err != nil {
 		log.Fatalf("failed to send request: %v", err)
 	}
@@ -84,4 +77,14 @@ func measureBandwidth(operation string) func(count int) {
 		elapsed := time.Since(start)
 		log.Printf("%v bandwidth: %.0f B/s", operation, float64(count)/elapsed.Seconds())
 	}
+}
+
+func randomBody(size int64) io.Reader {
+	pr, pw := io.Pipe()
+	go func() {
+		random := io.LimitReader(rand.Reader, size)
+		_, err := io.Copy(pw, random)
+		_ = pw.CloseWithError(err)
+	}()
+	return pr
 }

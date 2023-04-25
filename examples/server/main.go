@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	addr = ":8080"
+	addr         = ":8080"
+	echoEndpoint = "/echo"
 
-	readLimit  = 4 * bwlimit.KB // read limit is 4000 B/s
-	writeLimit = bwlimit.MiB    // write limit is 1048576 B/s
+	readLimit  = 0 // 4 * bwlimit.KB // read limit is 4000 B/s
+	writeLimit = 0 // bwlimit.MiB    // write limit is 1048576 B/s
 )
 
 func main() {
@@ -41,7 +42,7 @@ func main() {
 	ln = bwlimit.NewListener(ln, writeLimit, readLimit)
 	defer ln.Close()
 
-	http.Handle("/echo", http.HandlerFunc(echoHandler))
+	http.Handle(echoEndpoint, http.HandlerFunc(echoHandler))
 	srv := &http.Server{Addr: addr}
 	log.Fatal(srv.Serve(ln))
 }
