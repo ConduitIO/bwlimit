@@ -25,15 +25,20 @@ import (
 	"google.golang.org/grpc"
 )
 
-// WithBandwidthLimitedContextDialer TODO
+// WithBandwidthLimitedContextDialer returns a DialOption that sets a dialer to
+// create connections with a bandwidth limit. If FailOnNonTempDialError() is set
+// to true, and an error is returned by f, gRPC checks the error's Temporary()
+// method to decide if it should try to reconnect to the network address.
+// A zero value for writeBytesPerSecond or readBytesPerSecond means the
+// corresponding action will not have a bandwidth limit.
 // This option can NOT be used together with grpc.WithContextDialer.
 func WithBandwidthLimitedContextDialer(
 	writeBytesPerSecond,
 	readBytesPerSecond bwlimit.Byte,
-	dialer func(context.Context, string) (net.Conn, error),
+	f func(context.Context, string) (net.Conn, error),
 ) grpc.DialOption {
 	return grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-		conn, err := dial(ctx, addr, dialer)
+		conn, err := dial(ctx, addr, f)
 		if err != nil {
 			return nil, err
 		}

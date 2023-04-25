@@ -54,7 +54,7 @@ func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ll := bwlimit.NewListener(lis, 0, 10)
+		ll := bwlimit.NewListener(lis, 0, 0)
 		if err := srv.Serve(ll); err != nil {
 			log.Fatalf("Server exited with error: %v", err)
 		}
@@ -69,7 +69,7 @@ func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 		"bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// this interceptor limits the bandwidth
-		WithBandwidthLimitedContextDialer(0, 0, dialer),
+		WithBandwidthLimitedContextDialer(100, 0, dialer),
 	)
 	if err != nil {
 		t.Fatalf("Failed to dial bufnet: %v", err)
@@ -86,5 +86,5 @@ func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 	}
 
 	t.Log(resp)
-	t.Log(elapsed) // it takes ~15 seconds, since we need to write 155 bytes and are rate limited to 10 B/s
+	t.Log(elapsed) // it takes ~0.55 seconds, since we need to write 155 bytes and are rate limited to 100 B/s
 }

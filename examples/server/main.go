@@ -29,8 +29,8 @@ const (
 	addr         = ":8080"
 	echoEndpoint = "/echo"
 
-	readLimit  = 0 // 4 * bwlimit.KB // read limit is 4000 B/s
-	writeLimit = 0 // bwlimit.MiB    // write limit is 1048576 B/s
+	readLimit  = bwlimit.MiB    // read limit is 1048576 B/s
+	writeLimit = 4 * bwlimit.KB // write limit is 4000 B/s
 )
 
 func main() {
@@ -79,7 +79,7 @@ func write(w http.ResponseWriter, b []byte) error {
 func measureBandwidth(operation string) func(count int) {
 	start := time.Now()
 	return func(count int) {
-		elapsed := time.Since(start)
+		elapsed := time.Since(start) + time.Second // add 1 second to display the true rate
 		log.Printf("%v bandwidth: %.0f B/s", operation, float64(count)/elapsed.Seconds())
 	}
 }

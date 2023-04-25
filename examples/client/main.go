@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -28,17 +29,17 @@ const (
 	addr        = "http://localhost:8080/echo"
 	requestSize = 20 * bwlimit.KB
 
-	readLimit  = 4 * bwlimit.KB // read limit is 4000 B/s
-	writeLimit = bwlimit.MiB    // write limit is 1048576 B/s
+	readLimit  = bwlimit.MiB    // read limit is 1048576 B/s
+	writeLimit = 4 * bwlimit.KB // write limit is 4000 B/s
 )
 
 func main() {
-	// change default client to use transport with a bandwidth limit
-	http.DefaultClient.Transport = bwlimit.NewRoundTripper(
-		http.DefaultTransport,
-		writeLimit,
-		readLimit,
-	)
+	// change dialer in the default transport to use a bandwidth limit
+	dialer := bwlimit.NewDialer(&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}, writeLimit, readLimit)
+	http.DefaultTransport.(*http.Transport).DialContext = dialer.DialContext
 
 	body := randomBody(int64(requestSize))
 	resp, err := send(body)
@@ -74,7 +75,7 @@ func read(resp *http.Response) error {
 func measureBandwidth(operation string) func(count int) {
 	start := time.Now()
 	return func(count int) {
-		elapsed := time.Since(start)
+		elapsed := time.Since(start) + time.Second // add 1 second to display the true rate
 		log.Printf("%v bandwidth: %.0f B/s", operation, float64(count)/elapsed.Seconds())
 	}
 }

@@ -61,30 +61,30 @@ func TestReader_Read(t *testing.T) {
 	}, {
 		byteCount:      1,
 		bytesPerSecond: 1,
-		wantDelay:      time.Second,
+		wantDelay:      0, // no delay
 	}, {
 		byteCount:      4,
 		bytesPerSecond: 2,
-		// expected delay is 1.5 seconds:
+		// expected delay is 1 second:
 		// - first read happens instantly, returns 2 bytes
-		// - second read is delayed by 500ms (1/2 of a second to reserve 1 token), returns 2 bytes
-		// - third read is delayed by 1s (2/2 of a second to reserve 1 token), returns EOF
-		wantDelay: 1500 * time.Millisecond, // 1.5s
-	}, {
-		byteCount:      101,
-		bytesPerSecond: 100,
-		// expected delay is 20 milliseconds:
-		// - first read happens instantly, returns 100 bytes
-		// - second read is delayed by 10ms (1/100 of a second to reserve 1 token), returns 1 byte
-		// - third read is delayed by 10ms (1/100 of a second to reserve 1 token), returns EOF
-		wantDelay: 20 * time.Millisecond,
+		// - second read happens instantly (reservation contains no delay), returns 2 bytes
+		// - third read is delayed by 1s (reservation contains delay), returns EOF
+		wantDelay: 1 * time.Second,
 	}, {
 		byteCount:      102,
 		bytesPerSecond: 100,
 		// expected delay is 20 milliseconds:
 		// - first read happens instantly, returns 100 bytes
-		// - second read is delayed by 10ms (1/100 of a second to reserve 1 token), returns 2 bytes
-		// - third read is delayed by 20ms (2/100 of a second to reserve 1 token), returns EOF
+		// - second read happens instantly (reservation contains no delay), returns 2 bytes
+		// - third read is delayed by 20ms (2/100 of a second, as reservation contains 2 tokens), returns EOF
+		wantDelay: 20 * time.Millisecond,
+	}, {
+		byteCount:      103,
+		bytesPerSecond: 100,
+		// expected delay is 30 milliseconds:
+		// - first read happens instantly, returns 100 bytes
+		// - second read happens instantly (reservation contains no delay), returns 3 bytes
+		// - third read is delayed by 30ms (3/100 of a second, as reservation contains 3 tokens), returns EOF
 		wantDelay: 30 * time.Millisecond,
 	}}
 

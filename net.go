@@ -15,6 +15,7 @@
 package bwlimit
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -27,7 +28,7 @@ type Conn struct {
 	writer *Writer
 }
 
-// NewConn wraps an existing net.Conn and returns a *Conn that limits the
+// NewConn wraps an existing net.Conn and returns a Conn that limits the
 // bandwidth of writes and reads.
 // A zero value for writeLimitPerSecond or readLimitPerSecond means the
 // corresponding action will not have a bandwidth limit.
@@ -147,4 +148,140 @@ func (c *Conn) WriteBandwidthLimit() Byte {
 // ReadBandwidthLimit returns the current read bandwidth limit.
 func (c *Conn) ReadBandwidthLimit() Byte {
 	return c.reader.BandwidthLimit()
+}
+
+// Listener is a net.Listener that limits the bandwidth of the connections it
+// creates.
+type Listener struct {
+	net.Listener
+
+	writeBytesPerSecond Byte
+	readBytesPerSecond  Byte
+}
+
+// NewListener wraps an existing net.Listener and returns a Listener that limits
+// the bandwidth of the connections it creates.
+// A zero value for writeLimitPerSecond or readLimitPerSecond means the
+// corresponding action will not have a bandwidth limit.
+func NewListener(lis net.Listener, writeLimitPerSecond, readLimitPerSecond Byte) *Listener {
+	bwlis := &Listener{Listener: lis}
+	bwlis.SetWriteBandwidthLimit(writeLimitPerSecond)
+	bwlis.SetReadBandwidthLimit(readLimitPerSecond)
+	return bwlis
+}
+
+// Accept waits for and returns the next connection to the listener.
+// It returns a connection with a configured bandwidth limit. Each connection
+// tracks its own bandwidth.
+func (l *Listener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if conn != nil {
+		conn = NewConn(conn, l.writeBytesPerSecond, l.readBytesPerSecond)
+	}
+	return conn, err
+}
+
+// WriteBandwidthLimit returns the current write bandwidth limit.
+func (l *Listener) WriteBandwidthLimit() Byte {
+	return l.writeBytesPerSecond
+}
+
+// ReadBandwidthLimit returns the current read bandwidth limit.
+func (l *Listener) ReadBandwidthLimit() Byte {
+	return l.readBytesPerSecond
+}
+
+// SetWriteBandwidthLimit sets the bandwidth limit for writes on future
+// connections opened in Accept. It has no effect on already opened connections.
+// A zero value for bytesPerSecond means the bandwidth limit is removed.
+func (l *Listener) SetWriteBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		l.writeBytesPerSecond = 0
+		return
+	}
+	l.writeBytesPerSecond = bytesPerSecond
+}
+
+// SetReadBandwidthLimit sets the bandwidth limit for reads on future
+// connections opened in Accept. It has no effect on already opened connections.
+// A zero value for bytesPerSecond means the bandwidth limit is removed.
+func (l *Listener) SetReadBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		l.readBytesPerSecond = 0
+		return
+	}
+	l.readBytesPerSecond = bytesPerSecond
+}
+
+// Dialer is a net.Dialer that limits the bandwidth of the connections it
+// creates.
+type Dialer struct {
+	*net.Dialer
+
+	writeBytesPerSecond Byte
+	readBytesPerSecond  Byte
+}
+
+// NewDialer wraps an existing net.Dialer and returns a Dialer that limits
+// the bandwidth of the connections it creates.
+// A zero value for writeLimitPerSecond or readLimitPerSecond means the
+// corresponding action will not have a bandwidth limit.
+func NewDialer(d *net.Dialer, writeLimitPerSecond, readLimitPerSecond Byte) *Dialer {
+	bwd := &Dialer{Dialer: d}
+	bwd.SetWriteBandwidthLimit(writeLimitPerSecond)
+	bwd.SetReadBandwidthLimit(readLimitPerSecond)
+	return bwd
+}
+
+// Dial connects to the address on the named network. It returns a connection
+// with the configured bandwidth limits. Each connection tracks its own
+// bandwidth.
+func (d *Dialer) Dial(network, address string) (net.Conn, error) {
+	conn, err := d.Dialer.Dial(network, address)
+	if conn != nil {
+		conn = NewConn(conn, d.writeBytesPerSecond, d.readBytesPerSecond)
+	}
+	return conn, err
+}
+
+// DialContext connects to the address on the named network using the provided
+// context. It returns a connection with the configured bandwidth limits.
+func (d *Dialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	conn, err := d.Dialer.DialContext(ctx, network, address)
+	if conn != nil {
+		conn = NewConn(conn, d.writeBytesPerSecond, d.readBytesPerSecond)
+	}
+	return conn, err
+}
+
+// WriteBandwidthLimit returns the current write bandwidth limit.
+func (d *Dialer) WriteBandwidthLimit() Byte {
+	return d.writeBytesPerSecond
+}
+
+// ReadBandwidthLimit returns the current read bandwidth limit.
+func (d *Dialer) ReadBandwidthLimit() Byte {
+	return d.readBytesPerSecond
+}
+
+// SetWriteBandwidthLimit sets the bandwidth limit for writes on future
+// connections opened in Accept. It has no effect on already opened connections.
+// A zero value for bytesPerSecond means the bandwidth limit is removed.
+func (d *Dialer) SetWriteBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		d.writeBytesPerSecond = 0
+		return
+	}
+	d.writeBytesPerSecond = bytesPerSecond
+}
+
+// SetReadBandwidthLimit sets the bandwidth limit for reads on future
+// connections opened in Accept. It has no effect on already opened connections.
+// A zero value for bytesPerSecond means the bandwidth limit is removed.
+func (d *Dialer) SetReadBandwidthLimit(bytesPerSecond Byte) {
+	if bytesPerSecond <= 0 {
+		d.readBytesPerSecond = 0
+		return
+	}
+	d.readBytesPerSecond = bytesPerSecond
 }
