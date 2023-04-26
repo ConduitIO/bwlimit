@@ -142,6 +142,7 @@ func (r *Reader) readWithRateLimit(ctx context.Context, p []byte) (int, error) {
 			}
 			return 0, err
 		}
+		r.reservation = nil
 	}
 
 	at := time.Now()
@@ -149,8 +150,6 @@ func (r *Reader) readWithRateLimit(ctx context.Context, p []byte) (int, error) {
 	if n > 0 {
 		// reserve the number of actually read bytes to delay future reads
 		r.reservation = r.limiter.ReserveN(at, n)
-	} else {
-		r.reservation = nil
 	}
 	return n, err
 }
