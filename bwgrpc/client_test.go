@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/conduitio/bwlimit"
 	"github.com/conduitio/bwlimit/bwgrpc/testproto"
 	"github.com/golang/mock/gomock"
 	"google.golang.org/grpc"
@@ -30,23 +29,63 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestWithBandwidthLimitedContextDialer(t *testing.T) {
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	ctx := context.Background()
-	ctrl := gomock.NewController(t)
-	srv := grpc.NewServer()
-
+func TestInterceptorBandwidthLimit(t *testing.T) {
 	// use in-memory connection
 	lis := bufconn.Listen(1024 * 1024)
 	dialer := func(ctx context.Context, _ string) (net.Conn, error) {
 		return lis.DialContext(ctx)
 	}
 
+	// prepare server
+	wantResp := &testproto.TestResponse{Code: 1}
+	startTestServer(t, lis, wantResp)
+
+	// prepare client with bandwidth limit
+	c := newTestClient(t, WithBandwidthLimitedContextDialer(100, 0, dialer))
+
+	before := time.Now()
+	resp, err := c.TestRPC(context.Background(), &testproto.TestRequest{Id: "abcdefghijklmnopqrstuvwxyz"})
+	gotDelay := time.Since(before)
+	if err != nil {
+		t.Fatalf("Failed to call TestRPC: %v", err)
+	}
+
+	if resp.Code != wantResp.Code {
+		t.Fatalf("responses don't match, expected %v, got %v", resp, wantResp)
+	}
+
+	// check how long it took
+	const (
+		// it should take 0.55 seconds, since we need to write 155 bytes and are rate limited to 100 B/s
+		wantDelay = 550 * time.Millisecond
+		// allow 10 milliseconds of difference
+		epsilon = 10 * time.Millisecond
+	)
+
+	gotDiff := gotDelay - wantDelay
+	if gotDiff < 0 {
+		gotDiff = -gotDiff
+	}
+
+	if gotDiff > epsilon {
+		t.Fatalf("expected a maximum delay of %v, got %v, allowed epsilon of %v exceeded", wantDelay, gotDelay, epsilon)
+	}
+}
+
+func startTestServer(t *testing.T, lis net.Listener, resp *testproto.TestResponse) {
+	ctrl := gomock.NewController(t)
+	srv := grpc.NewServer()
+
 	// create and register simple mock server
 	mockServer := testproto.NewMockTestServiceServer(ctrl)
-	mockServer.EXPECT().TestRPC(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, request *testproto.TestRequest) (*testproto.TestResponse, error) {
-		return &testproto.TestResponse{Code: 1}, nil
-	})
+	mockServer.EXPECT().
+		TestRPC(gomock.Any(), gomock.Any()).
+		DoAndReturn(
+			func(ctx context.Context, request *testproto.TestRequest) (*testproto.TestResponse, error) {
+				// time.Sleep(2 * time.Second)
+				return &testproto.TestResponse{Code: 1}, nil
+			},
+		)
 	testproto.RegisterTestServiceServer(srv, mockServer)
 
 	// start gRPC server
@@ -54,37 +93,32 @@ func TestWithBandwidthLimitedContextDialer(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		ll := bwlimit.NewListener(lis, 0, 0)
-		if err := srv.Serve(ll); err != nil {
+		if err := srv.Serve(lis); err != nil {
 			log.Fatalf("Server exited with error: %v", err)
 		}
 	}()
-	defer func() {
-		srv.Stop()
+	t.Cleanup(func() {
+		srv.GracefulStop()
 		wg.Wait()
-	}()
+	})
+}
 
+func newTestClient(t *testing.T, dialerOption grpc.DialOption) testproto.TestServiceClient {
 	// open rate limited client connection, limited to 10 B/s
-	conn, err := grpc.DialContext(ctx,
+	conn, err := grpc.DialContext(
+		context.Background(),
 		"bufnet",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		// this interceptor limits the bandwidth
-		WithBandwidthLimitedContextDialer(100, 0, dialer),
+		dialerOption,
 	)
 	if err != nil {
 		t.Fatalf("Failed to dial bufnet: %v", err)
 	}
-	defer conn.Close()
+	t.Cleanup(func() {
+		conn.Close()
+	})
 
 	// create gRPC service client and measure how long it takes to get a response
-	c := testproto.NewTestServiceClient(conn)
-	before := time.Now()
-	resp, err := c.TestRPC(ctx, &testproto.TestRequest{Id: "abcdefghijklmnopqrstuvwxyz"})
-	elapsed := time.Since(before)
-	if err != nil {
-		t.Fatalf("Failed to call TestRPC: %v", err)
-	}
-
-	t.Log(resp)
-	t.Log(elapsed) // it takes ~0.55 seconds, since we need to write 155 bytes and are rate limited to 100 B/s
+	return testproto.NewTestServiceClient(conn)
 }
