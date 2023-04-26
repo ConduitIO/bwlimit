@@ -40,9 +40,10 @@ func TestInterceptorBandwidthLimit(t *testing.T) {
 	wantResp := &testproto.TestResponse{Code: 1}
 	startTestServer(t, lis, wantResp)
 
-	// prepare client with bandwidth limit
+	// prepare client with write bandwidth limit of 100 B/s
 	c := newTestClient(t, WithBandwidthLimitedContextDialer(100, 0, dialer))
 
+	// send a request and measure how long it takes to get a response
 	before := time.Now()
 	resp, err := c.TestRPC(context.Background(), &testproto.TestRequest{Id: "abcdefghijklmnopqrstuvwxyz"})
 	gotDelay := time.Since(before)
@@ -56,9 +57,10 @@ func TestInterceptorBandwidthLimit(t *testing.T) {
 
 	// check how long it took
 	const (
-		// it should take 0.55 seconds, since we need to write 155 bytes and are rate limited to 100 B/s
+		// It should take 0.55 seconds, since we need to write 155 bytes and are rate limited to 100 B/s
+		// After writing 100 bytes we delay for 550ms to write the remaining 55 bytes
 		wantDelay = 550 * time.Millisecond
-		// allow 10 milliseconds of difference
+		// Allow 10 milliseconds of difference
 		epsilon = 10 * time.Millisecond
 	)
 
@@ -82,8 +84,7 @@ func startTestServer(t *testing.T, lis net.Listener, resp *testproto.TestRespons
 		TestRPC(gomock.Any(), gomock.Any()).
 		DoAndReturn(
 			func(ctx context.Context, request *testproto.TestRequest) (*testproto.TestResponse, error) {
-				// time.Sleep(2 * time.Second)
-				return &testproto.TestResponse{Code: 1}, nil
+				return resp, nil
 			},
 		)
 	testproto.RegisterTestServiceServer(srv, mockServer)
@@ -104,7 +105,6 @@ func startTestServer(t *testing.T, lis net.Listener, resp *testproto.TestRespons
 }
 
 func newTestClient(t *testing.T, dialerOption grpc.DialOption) testproto.TestServiceClient {
-	// open rate limited client connection, limited to 10 B/s
 	conn, err := grpc.DialContext(
 		context.Background(),
 		"bufnet",
@@ -119,6 +119,5 @@ func newTestClient(t *testing.T, dialerOption grpc.DialOption) testproto.TestSer
 		conn.Close()
 	})
 
-	// create gRPC service client and measure how long it takes to get a response
 	return testproto.NewTestServiceClient(conn)
 }
