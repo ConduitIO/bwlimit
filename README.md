@@ -13,6 +13,12 @@ BWLimit lets you configure a bandwidth limit on [`net.Conn`](https://pkg.go.dev/
 BWLimit can be used to throttle the bandwidth (bytes per second) either on the
 client or server.
 
+Install it with:
+
+```sh
+go get github.com/conduitio/bwlimit
+```
+
 See usage examples below:
 - [Server Side](#server-side)
 - [Client Side](#client-side)
@@ -99,7 +105,7 @@ func main() {
 
 The gRPC interceptor is provided in a separate module, import it with:
 
-```
+```sh
 go get github.com/conduitio/bwlimit/bwgrpc
 ```
 
