@@ -1,5 +1,7 @@
 # BWLimit gRPC
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/conduitio/bwlimit/bwgrpc.svg)](https://pkg.go.dev/github.com/conduitio/bwlimit/bwgrpc)
+
 This module provides a `grpc.DialOption` for constructing a gRPC connection with
 a bandwidth limit. See
 [github.com/ConduitIO/bwlimit](https://github.com/ConduitIO/bwlimit) for more
