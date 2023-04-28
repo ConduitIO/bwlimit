@@ -24,6 +24,8 @@ See usage examples below:
 - [Client Side](#client-side)
 - [gRPC Client Interceptor](#grpc-client-interceptor)
 
+Or check out the [runnable examples](./examples).
+
 ### Server Side
 
 To limit the bandwidth on the server use
