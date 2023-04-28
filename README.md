@@ -153,3 +153,11 @@ func main() {
 	}
 }
 ```
+
+## Limitation
+
+Please note that bwlimit limits the speed at which data is read from the local
+kernel's TCP buffer, and not directly from the remote connection. This means
+that the local buffer may become filled and cause the network to be idle while
+data is read slowly from the buffer, which can cause the actual bandwidth to
+differ from the one measured in Go code.
