@@ -168,6 +168,14 @@ func (r *Reader) wait(ctx context.Context, d time.Duration) error {
 	}
 }
 
+func (r *Reader) Seek(offset int64, whence int) (int64, error) {
+	seekR, ok := r.Reader.(io.ReadSeeker)
+	if !ok {
+		return 0, errors.New("reader must be seeker")
+	}
+	return seekR.Seek(offset, whence)
+}
+
 // Writer wraps an io.Writer and imposes a bandwidth limit on calls to Write.
 type Writer struct {
 	io.Writer
