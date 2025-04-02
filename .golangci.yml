@@ -1,53 +1,63 @@
-linters-settings:
-  gofmt:
-    simplify: false
-  govet:
-    check-shadowing: false
-  nolintlint:
-    allow-unused: false # report any unused nolint directives
-    require-explanation: true # require an explanation for nolint directives
-    require-specific: true # require nolint directives to mention the specific linter being suppressed
-  gocyclo:
-    min-complexity: 20
-  goconst:
-    ignore-tests: true
-  goheader:
-    template-path: '.golangci.goheader.template'
-    values:
-      regexp:
-        copyright-year: 20[2-9]\d
-
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
     - bodyclose
     - dogsled
     - durationcheck
     - errcheck
     - errname
-    - exportloopref
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
     - goheader
-    - goimports
-    - revive
     - gomoddirectives
     - gomodguard
     - goprintffuncname
     - gosec
-    - gosimple
     - govet
     - ineffassign
     - makezero
     - noctx
     - nolintlint
     - predeclared
+    - revive
     - staticcheck
-    - stylecheck
-    - typecheck
     - unconvert
     - unused
     - wastedassign
     - whitespace
+  settings:
+    gocyclo:
+      min-complexity: 20
+    goheader:
+      values:
+        regexp:
+          copyright-year: 20[2-9]\d
+      template-path: .golangci.goheader.template
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - goconst
+        path: (.+)_test\.go
+    paths:
+      - examples/.*
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: false
+  exclusions:
+    generated: lax

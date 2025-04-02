@@ -83,7 +83,7 @@ func startTestServer(t *testing.T, lis net.Listener, resp *testproto.TestRespons
 	mockServer.EXPECT().
 		TestRPC(gomock.Any(), gomock.Any()).
 		DoAndReturn(
-			func(ctx context.Context, request *testproto.TestRequest) (*testproto.TestResponse, error) {
+			func(context.Context, *testproto.TestRequest) (*testproto.TestResponse, error) {
 				return resp, nil
 			},
 		)
